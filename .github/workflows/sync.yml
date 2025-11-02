@@ -1,0 +1,72 @@
+name: Sync TypeScript from Encore
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Clone upstream
+        run: |
+          git clone --depth=1 https://github.com/encoredev/encore.git upstream
+          rm -rf upstream/.git
+
+      - name: Clear and sync
+        run: |
+          find . -mindepth 1 -maxdepth 1 \
+            ! -name '.git' \
+            ! -name '.github' \
+            ! -name 'upstream' \
+            -exec rm -rf {} +
+          
+          cp -r upstream/runtimes/js ./runtimes
+          cp -r upstream/docs/ts ./docs
+          cp -r upstream/e2e-tests/testdata/echo_client/ts ./echo_client
+          cp -r upstream/e2e-tests/testdata/tsapp ./tsapp
+          cp upstream/README.md upstream/LICENSE ./
+
+      - name: Cleanup
+        run: |
+          rm -rf upstream
+          find . -name "*.go" -delete
+          find . -name "*.rs" -delete
+          find . -name "Cargo.*" -delete
+
+      - name: Create README note
+        run: |
+          cat > FORK_INFO.md << 'EOF'
+          # TypeScript-Only Encore
+          
+          Auto-synced TypeScript subset from [encoredev/encore](https://github.com/encoredev/encore)
+          
+          **Contents:**
+          - `runtimes/js` - TypeScript runtime
+          - `docs/ts` - TypeScript documentation
+          - `echo_client/` - Example client
+          - `tsapp/` - Example app
+          
+          **Sync:** Every 6 hours via GitHub Actions
+          EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          
+          if git diff --staged --quiet; then
+            echo "No changes"
+          else
+            git commit -m "Sync from encore $(date -u +%Y-%m-%d_%H:%M)"
+            git push
+          fi
